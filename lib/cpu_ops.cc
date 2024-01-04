@@ -1,6 +1,7 @@
-// This file defines the Python interface to the XLA custom call implemented on the CPU.
-// It is exposed as a standard pybind11 module defining "capsule" objects containing our
-// method. For simplicity, we export a separate capsule for each supported dtype.
+// This file defines the Python interface to the XLA custom call implemented on
+// the CPU. It is exposed as a standard pybind11 module defining "capsule"
+// objects containing our method. For simplicity, we export a separate capsule
+// for each supported dtype.
 
 #include "kepler.h"
 #include "pybind11_kernel_helpers.h"
@@ -22,7 +23,8 @@ void cpu_kepler(void *out_tuple, const void **in) {
   T *cos_ecc_anom = reinterpret_cast<T *>(out[1]);
 
   for (std::int64_t n = 0; n < size; ++n) {
-    compute_eccentric_anomaly(mean_anom[n], ecc[n], sin_ecc_anom + n, cos_ecc_anom + n);
+    compute_eccentric_anomaly(mean_anom[n], ecc[n], sin_ecc_anom + n,
+                              cos_ecc_anom + n);
   }
 }
 

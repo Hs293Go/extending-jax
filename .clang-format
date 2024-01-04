@@ -1,2 +1,7 @@
+---
 BasedOnStyle: Google
-ColumnLimit: 99
+---
+IndentWidth: 2
+ColumnLimit: 80
+Language: Cpp
+AlignTrailingComments: true

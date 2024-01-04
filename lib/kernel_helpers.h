@@ -1,7 +1,8 @@
-// This header is not specific to our application and you'll probably want something like this
-// for any extension you're building. This includes the infrastructure needed to serialize
-// descriptors that are used with the "opaque" parameter of the GPU custom call. In our example
-// we'll use this parameter to pass the size of our problem.
+// This header is not specific to our application and you'll probably want
+// something like this for any extension you're building. This includes the
+// infrastructure needed to serialize descriptors that are used with the
+// "opaque" parameter of the GPU custom call. In our example we'll use this
+// parameter to pass the size of our problem.
 
 #ifndef _KEPLER_JAX_KERNEL_HELPERS_H_
 #define _KEPLER_JAX_KERNEL_HELPERS_H_
@@ -15,13 +16,14 @@ namespace kepler_jax {
 
 // https://en.cppreference.com/w/cpp/numeric/bit_cast
 template <class To, class From>
-typename std::enable_if<sizeof(To) == sizeof(From) && std::is_trivially_copyable<From>::value &&
+typename std::enable_if<sizeof(To) == sizeof(From) &&
+                            std::is_trivially_copyable<From>::value &&
                             std::is_trivially_copyable<To>::value,
                         To>::type
 bit_cast(const From& src) noexcept {
-  static_assert(
-      std::is_trivially_constructible<To>::value,
-      "This implementation additionally requires destination type to be trivially constructible");
+  static_assert(std::is_trivially_constructible<To>::value,
+                "This implementation additionally requires destination type to "
+                "be trivially constructible");
 
   To dst;
   memcpy(&dst, &src, sizeof(To));
