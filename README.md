@@ -223,10 +223,10 @@ void cpu_kepler(void *out_tuple, const void **in) {
 ```
 
 Then finally, we actually apply the op and the full implementation, which you
-can find in `lib/cpu_ops.cc` is:
+can find in `src/cpu_ops.cc` is:
 
 ```c++
-// lib/cpu_ops.cc
+// src/cpu_ops.cc
 #include <cstdint>
 
 template <typename T>
@@ -269,7 +269,7 @@ interface is, using the `cpu_kepler` function defined in the previous section as
 follows:
 
 ```c++
-// lib/cpu_ops.cc
+// src/cpu_ops.cc
 #include <pybind11/pybind11.h>
 
 // If you're looking for it, this function is actually implemented in
@@ -407,7 +407,7 @@ wrapper around the `mhlo.CustomCallOp` (documented
 Here's a summary of its arguments:
 
 - The first argument is the name that you gave your `PyCapsule`
-  in the `registrations` dictionary in `lib/cpu_ops.cc`. You can check what
+  in the `registrations` dictionary in `src/cpu_ops.cc`. You can check what
   names your capsules had by looking at `cpu_ops.registrations().keys()`.
 
 - Then, the two following arguments give the "type" of the outputs, and
@@ -435,14 +435,14 @@ but the syntax is somewhat different and there's a heck of a lot more
 boilerplate required. Since we need to compile and link CUDA code, there are
 also a few more packaging steps, but we'll get to that in the next section. The
 description in this section is a little all over the place, but the key files to
-look at to get more info are (a) `lib/gpu_ops.cc` for the dispatch functions
-called from Python, and (b) `lib/kernels.cc.cu` for the CUDA code implementing
+look at to get more info are (a) `src/gpu_ops.cc` for the dispatch functions
+called from Python, and (b) `src/kernels.cc.cu` for the CUDA code implementing
 the kernel.
 
 The signature for the GPU custom call is:
 
 ```c++
-// lib/kernels.cc.cu
+// src/kernels.cc.cu
 template <typename T>
 void gpu_kepler(
   cudaStream_t stream, void **buffers, const char *opaque, std::size_t opaque_len
@@ -456,7 +456,7 @@ provided as a single `void**` buffer. These will be ordered such that our access
 code from above is replaced by:
 
 ```c++
-// lib/kernels.cc.cu
+// src/kernels.cc.cu
 template <typename T>
 void gpu_kepler(
   cudaStream_t stream, void **buffers, const char *opaque, std::size_t opaque_len
@@ -506,7 +506,7 @@ pybind11::bytes PackDescriptor(const T& descriptor) {
 This serialization procedure should then be exposed in the Python module using:
 
 ```c++
-// lib/gpu_ops.cc
+// src/gpu_ops.cc
 #include <pybind11/pybind11.h>
 
 PYBIND11_MODULE(gpu_ops, m) {
@@ -530,7 +530,7 @@ const T* UnpackDescriptor(const char* opaque, std::size_t opaque_len) {
   return bit_cast<const T*>(opaque);
 }
 
-// lib/kernels.cc.cu
+// src/kernels.cc.cu
 template <typename T>
 void gpu_kepler(
   cudaStream_t stream, void **buffers, const char *opaque, std::size_t opaque_len
@@ -545,7 +545,7 @@ Once we have these parameters, the full procedure for launching the CUDA kernel
 is:
 
 ```c++
-// lib/kernels.cc.cu
+// src/kernels.cc.cu
 template <typename T>
 void gpu_kepler(
   cudaStream_t stream, void **buffers, const char *opaque, std::size_t opaque_len
@@ -575,7 +575,7 @@ void gpu_kepler(
 Finally, the kernel itself is relatively simple:
 
 ```c++
-// lib/kernels.cc.cu
+// src/kernels.cc.cu
 template <typename T>
 __global__ void kepler_kernel(
   std::int64_t size, const T *mean_anom, const T *ecc, T *sin_ecc_anom, T *cos_ecc_anom
@@ -614,7 +614,7 @@ def _kepler_lowering_gpu(ctx, mean_anom, ecc):
 
     # ...
 
-    # The name of the op is now prefaced with 'gpu' (our choice, see lib/gpu_ops.cc,
+    # The name of the op is now prefaced with 'gpu' (our choice, see src/gpu_ops.cc,
     # not a requirement)
     if np_dtype == np.float32:
         op_name = "gpu_kepler_f32"

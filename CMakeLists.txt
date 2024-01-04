@@ -9,7 +9,7 @@ find_package(pybind11 CONFIG REQUIRED)
 include_directories(${CMAKE_CURRENT_LIST_DIR}/lib)
 
 # CPU op library
-pybind11_add_module(cpu_ops ${CMAKE_CURRENT_LIST_DIR}/lib/cpu_ops.cc)
+pybind11_add_module(cpu_ops ${CMAKE_CURRENT_LIST_DIR}/src/cpu_ops.cc)
 install(TARGETS cpu_ops LIBRARY DESTINATION .)
 
 # Include the CUDA extensions if possible
@@ -21,8 +21,8 @@ if(CMAKE_CUDA_COMPILER)
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   pybind11_add_module(
     gpu_ops
-    ${CMAKE_CURRENT_LIST_DIR}/lib/kernels.cc.cu
-    ${CMAKE_CURRENT_LIST_DIR}/lib/gpu_ops.cc)
+    ${CMAKE_CURRENT_LIST_DIR}/src/kernels.cc.cu
+    ${CMAKE_CURRENT_LIST_DIR}/src/gpu_ops.cc)
   install(TARGETS gpu_ops LIBRARY DESTINATION .)
 else()
   message(STATUS "Building without CUDA")
