@@ -157,7 +157,7 @@ The files in this repo come in three categories:
 
 ## Defining an XLA custom call on the CPU
 
-The algorithm for our example problem is is implemented in the `lib/kepler.h`
+The algorithm for our example problem is is implemented in the `include/kepler.h`
 header and I won't go into details about the algorithm here, but the main point
 is that this could be an implementation built on any external library that you
 can call from C++ and, if you want to support GPU usage, CUDA. That header file
@@ -273,7 +273,7 @@ follows:
 #include <pybind11/pybind11.h>
 
 // If you're looking for it, this function is actually implemented in
-// lib/pybind11_kernel_helpers.h
+// include/pybind11_kernel_helpers.h
 template <typename T>
 pybind11::capsule EncapsulateFunction(T* fn) {
   return pybind11::capsule((void*)fn, "xla._CUSTOM_CALL_TARGET");
@@ -475,7 +475,7 @@ calls][xla-custom] documentation for more details). To use this `opaque`
 parameter, we will define a type to hold `size`:
 
 ```c++
-// lib/kernels.h
+// include/kernels.h
 struct KeplerDescriptor {
   std::int64_t size;
 };
@@ -484,17 +484,17 @@ struct KeplerDescriptor {
 and then the following boilerplate to serialize it:
 
 ```c++
-// lib/kernel_helpers.h
+// include/kernel_helpers.h
 #include <string>
 
 // Note that bit_cast is only available in recent C++ standards so you might need
-// to provide a shim like the one in lib/kernel_helpers.h
+// to provide a shim like the one in include/kernel_helpers.h
 template <typename T>
 std::string PackDescriptorAsString(const T& descriptor) {
   return std::string(bit_cast<const char*>(&descriptor), sizeof(T));
 }
 
-// lib/pybind11_kernel_helpers.h
+// include/pybind11_kernel_helpers.h
 #include <pybind11/pybind11.h>
 
 template <typename T>
@@ -521,7 +521,7 @@ PYBIND11_MODULE(gpu_ops, m) {
 Then, to deserialize this descriptor, we can use the following procedure:
 
 ```c++
-// lib/kernel_helpers.h
+// include/kernel_helpers.h
 template <typename T>
 const T* UnpackDescriptor(const char* opaque, std::size_t opaque_len) {
   if (opaque_len != sizeof(T)) {
@@ -676,7 +676,7 @@ Colab:
 [jaxlib]: https://github.com/google/jax/tree/master/jaxlib "jaxlib source code"
 [keplers-equation]: https://en.wikipedia.org/wiki/Kepler%27s_equation "Kepler's equation"
 [stan-cpp]: https://dfm.io/posts/stan-c++/ "Using external C++ functions with PyStan & radial velocity exoplanets"
-[kepler-h]: https://github.com/dfm/extending-jax/blob/main/lib/kepler.h
+[kepler-h]: https://github.com/dfm/extending-jax/blob/main/include/kepler.h
 [capsule]: https://docs.python.org/3/c-api/capsule.html "Capsules"
 [jaxlib-lapack]: https://github.com/google/jax/blob/master/jaxlib/lapack.pyx "jax/lapack.pyx"
 [scikit-build-core]: https://github.com/scikit-build/scikit-build-core "scikit-build-core"

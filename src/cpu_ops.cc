@@ -3,8 +3,8 @@
 // objects containing our method. For simplicity, we export a separate capsule
 // for each supported dtype.
 
-#include "kepler.h"
-#include "pybind11_kernel_helpers.h"
+#include "extending_jax/kepler.h"
+#include "extending_jax/pybind11_kernel_helpers.h"
 
 using namespace kepler_jax;
 

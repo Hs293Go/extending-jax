@@ -2,9 +2,9 @@
 // CUDA kernel and I make no promises about the quality of the code or the
 // choices made therein, but it should get the point accross.
 
-#include "kepler.h"
-#include "kernel_helpers.h"
-#include "kernels.h"
+#include "extending_jax/kepler.h"
+#include "extending_jax/kernel_helpers.h"
+#include "extending_jax/kernels.h"
 
 namespace kepler_jax {
 

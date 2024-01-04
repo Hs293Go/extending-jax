@@ -9,7 +9,7 @@
 
 #include <pybind11/pybind11.h>
 
-#include "kernel_helpers.h"
+#include "extending_jax/kernel_helpers.h"
 
 namespace kepler_jax {
 

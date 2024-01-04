@@ -6,7 +6,7 @@ message(STATUS "Using CMake version: " ${CMAKE_VERSION})
 set(PYBIND11_NEWPYTHON ON)
 find_package(pybind11 CONFIG REQUIRED)
 
-include_directories(${CMAKE_CURRENT_LIST_DIR}/lib)
+include_directories(${CMAKE_CURRENT_LIST_DIR}/include)
 
 # CPU op library
 pybind11_add_module(cpu_ops ${CMAKE_CURRENT_LIST_DIR}/src/cpu_ops.cc)

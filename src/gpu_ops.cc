@@ -5,8 +5,8 @@
 // the op. The actually implementation of the custom call can be found in
 // kernels.cc.cu.
 
-#include "kernels.h"
-#include "pybind11_kernel_helpers.h"
+#include "extending_jax/kernels.h"
+#include "extending_jax/pybind11_kernel_helpers.h"
 
 using namespace kepler_jax;
 
