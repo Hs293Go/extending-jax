@@ -2,7 +2,7 @@
 
 __all__ = ["kepler"]
 
-from functools import partial
+import functools
 
 import numpy as np
 from jax import core, dtypes, lax
@@ -10,7 +10,7 @@ from jax import numpy as jnp
 from jax.core import ShapedArray
 from jax.interpreters import ad, batching, mlir, xla
 from jax.lib import xla_client
-from jaxlib.hlo_helpers import custom_call
+from jaxlib import hlo_helpers
 
 # Register the CPU XLA custom calls
 from . import cpu_ops
@@ -31,39 +31,48 @@ else:
 # public-facing function in this module
 
 
-def kepler(mean_anom, ecc):
-    # We're going to apply array broadcasting here since the logic of our op
-    # is much simpler if we require the inputs to all have the same shapes
-    mean_anom_, ecc_ = jnp.broadcast_arrays(mean_anom, ecc)
+def kepler(x, u):
+    return _primary.bind(x, u)
 
-    # Then we need to wrap into the range [0, 2*pi)
-    M_mod = jnp.mod(mean_anom_, 2 * np.pi)
 
-    return _kepler_prim.bind(M_mod, ecc_)
-
+STATE_SIZE = 10
+INPUT_SIZE = 4
 
 # *********************************
 # *  SUPPORT FOR JIT COMPILATION  *
 # *********************************
 
+
 # For JIT compilation we need a function to evaluate the shape and dtype of the
 # outputs of our op for some given inputs
-def _kepler_abstract(mean_anom, ecc):
-    shape = mean_anom.shape
-    dtype = dtypes.canonicalize_dtype(mean_anom.dtype)
-    assert dtypes.canonicalize_dtype(ecc.dtype) == dtype
-    assert ecc.shape == shape
-    return (ShapedArray(shape, dtype), ShapedArray(shape, dtype))
+def _kepler_abstract(x, u):
+    n_x, size_x = x.shape if len(x.shape) > 1 else (1,) + x.shape
+    if size_x != STATE_SIZE:
+        raise ValueError(f"Incorrect state dimension: {size_x} != {STATE_SIZE}")
+
+    n_u, size_u = u.shape if len(u.shape) > 1 else (1,) + u.shape
+    if size_u != INPUT_SIZE:
+        raise ValueError(f"Incorrect input dimension: {size_u} != {INPUT_SIZE}")
+
+    if n_x != n_u:
+        raise ValueError(f"Mismatch in number of states and inputs {n_x} != {n_u}")
+
+    dtype = dtypes.canonicalize_dtype(x.dtype)
+    assert dtypes.canonicalize_dtype(u.dtype) == dtype
+    return ShapedArray(x.shape, dtype)
 
 
 # We also need a lowering rule to provide an MLIR "lowering" of out primitive.
 # This provides a mechanism for exposing our custom C++ and/or CUDA interfaces
 # to the JAX XLA backend. We're wrapping two translation rules into one here:
 # one for the CPU and one for the GPU
-def _kepler_lowering(ctx, mean_anom, ecc, *, platform="cpu"):
+def _kepler_lowering(ctx, x, u, platform="cpu", *args, **kw):
 
     # Checking that input types and shape agree
-    assert mean_anom.type == ecc.type
+    if x.type.element_type != u.type.element_type:
+        raise TypeError(
+            f"Type mismatch: {x.type.element_type} != {u.type.element_type}"
+        )
 
     # Extract the numpy type of the inputs
     mean_anom_aval, _ = ctx.avals_in
@@ -71,12 +80,13 @@ def _kepler_lowering(ctx, mean_anom, ecc, *, platform="cpu"):
 
     # The inputs and outputs all have the same shape and memory layout
     # so let's predefine this specification
-    dtype = mlir.ir.RankedTensorType(mean_anom.type)
+    dtype = mlir.ir.RankedTensorType(x.type)
     dims = dtype.shape
-    layout = tuple(range(len(dims) - 1, -1, -1))
+    ndims = len(dims)
+    layout = tuple(range(ndims - 1, -1, -1))
 
     # The total size of the input is the product across dimensions
-    size = np.prod(dims).astype(np.int64)
+    size = dims[0] if ndims > 1 else 1
 
     # We dispatch a different call depending on the dtype
     if np_dtype == np.float32:
@@ -86,19 +96,20 @@ def _kepler_lowering(ctx, mean_anom, ecc, *, platform="cpu"):
     else:
         raise NotImplementedError(f"Unsupported dtype {np_dtype}")
 
+    custom_call = functools.partial(
+        hlo_helpers.custom_call,
+        op_name,
+        result_types=[dtype],
+        result_layouts=[layout],
+    )
+
     # And then the following is what changes between the GPU and CPU
     if platform == "cpu":
         # On the CPU, we pass the size of the data as a the first input
         # argument
         return custom_call(
-            op_name,
-            # Output types
-            result_types=[dtype, dtype],
-            # The inputs:
-            operands=[mlir.ir_constant(size), mean_anom, ecc],
-            # Layout specification:
+            operands=[mlir.ir_constant(size), x, u],
             operand_layouts=[(), layout, layout],
-            result_layouts=[layout, layout]
         ).results
 
     elif platform == "gpu":
@@ -111,26 +122,18 @@ def _kepler_lowering(ctx, mean_anom, ecc, *, platform="cpu"):
         opaque = gpu_ops.build_kepler_descriptor(size)
 
         return custom_call(
-            op_name,
-            # Output types
-            result_types=[dtype, dtype],
-            # The inputs:
-            operands=[mean_anom, ecc],
-            # Layout specification:
+            operands=[x, u],
             operand_layouts=[layout, layout],
-            result_layouts=[layout, layout],
-            # GPU specific additional data
-            backend_config=opaque
+            backend_config=opaque,
         ).results
 
-    raise ValueError(
-        "Unsupported platform; this must be either 'cpu' or 'gpu'"
-    )
+    raise ValueError("Unsupported platform; this must be either 'cpu' or 'gpu'")
 
 
 # **********************************
 # *  SUPPORT FOR FORWARD AUTODIFF  *
 # **********************************
+
 
 # Here we define the differentiation rules using a JVP derived using implicit
 # differentiation of Kepler's equation:
@@ -144,54 +147,56 @@ def _kepler_lowering(ctx, mean_anom, ecc, *, platform="cpu"):
 # applications, so check out the "How JAX primitives work" tutorial in the JAX
 # documentation for more info as necessary.
 def _kepler_jvp(args, tangents):
-    mean_anom, ecc = args
-    d_mean_anom, d_ecc = tangents
+    raise NotImplementedError()
+    # mean_anom, ecc = args
+    # d_mean_anom, d_ecc = tangents
 
-    # We use "bind" here because we don't want to mod the mean anomaly again
-    sin_ecc_anom, cos_ecc_anom = _kepler_prim.bind(mean_anom, ecc)
+    # # We use "bind" here because we don't want to mod the mean anomaly again
+    # sin_ecc_anom, cos_ecc_anom = _primary.bind(mean_anom, ecc)
 
-    def zero_tangent(tan, val):
-        return lax.zeros_like_array(val) if type(tan) is ad.Zero else tan
+    # def zero_tangent(tan, val):
+    #     return lax.zeros_like_array(val) if type(tan) is ad.Zero else tan
 
-    # Propagate the derivatives
-    d_ecc_anom = (
-        zero_tangent(d_mean_anom, mean_anom)
-        + zero_tangent(d_ecc, ecc) * sin_ecc_anom
-    ) / (1 - ecc * cos_ecc_anom)
+    # # Propagate the derivatives
+    # d_ecc_anom = (
+    #     zero_tangent(d_mean_anom, mean_anom) + zero_tangent(d_ecc, ecc) * sin_ecc_anom
+    # ) / (1 - ecc * cos_ecc_anom)
 
-    return (sin_ecc_anom, cos_ecc_anom), (
-        cos_ecc_anom * d_ecc_anom,
-        -sin_ecc_anom * d_ecc_anom,
-    )
+    # return (sin_ecc_anom, cos_ecc_anom), (
+    #     cos_ecc_anom * d_ecc_anom,
+    #     -sin_ecc_anom * d_ecc_anom,
+    # )
 
 
 # ************************************
 # *  SUPPORT FOR BATCHING WITH VMAP  *
 # ************************************
 
+
 # Our op already supports arbitrary dimensions so the batching rule is quite
 # simple. The jax.lax.linalg module includes some example of more complicated
 # batching rules if you need such a thing.
 def _kepler_batch(args, axes):
     assert axes[0] == axes[1]
-    return kepler(*args), axes
+    return kepler(*args), axes[0]
 
 
 # *********************************************
 # *  BOILERPLATE TO REGISTER THE OP WITH JAX  *
 # *********************************************
-_kepler_prim = core.Primitive("kepler")
-_kepler_prim.multiple_results = True
-_kepler_prim.def_impl(partial(xla.apply_primitive, _kepler_prim))
-_kepler_prim.def_abstract_eval(_kepler_abstract)
+_primary = core.Primitive("kepler")
+_primary.multiple_results = False
+_primary.def_impl(functools.partial(xla.apply_primitive, _primary))
+_primary.def_abstract_eval(_kepler_abstract)
 
 # Connect the XLA translation rules for JIT compilation
 for platform in ["cpu", "gpu"]:
     mlir.register_lowering(
-        _kepler_prim,
-        partial(_kepler_lowering, platform=platform),
-        platform=platform)
+        _primary,
+        functools.partial(_kepler_lowering, platform=platform),
+        platform=platform,
+    )
 
 # Connect the JVP and batching rules
-ad.primitive_jvps[_kepler_prim] = _kepler_jvp
-batching.primitive_batchers[_kepler_prim] = _kepler_batch
+ad.primitive_jvps[_primary] = _kepler_jvp
+batching.primitive_batchers[_primary] = _kepler_batch
