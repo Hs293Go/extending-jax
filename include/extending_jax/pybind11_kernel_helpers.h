@@ -11,7 +11,7 @@
 
 #include "extending_jax/kernel_helpers.h"
 
-namespace kepler_jax {
+namespace model {
 
 template <typename T>
 pybind11::bytes PackDescriptor(const T& descriptor) {
@@ -23,6 +23,6 @@ pybind11::capsule EncapsulateFunction(T* fn) {
   return pybind11::capsule(bit_cast<void*>(fn), "xla._CUSTOM_CALL_TARGET");
 }
 
-}  // namespace kepler_jax
+}  // namespace model
 
 #endif

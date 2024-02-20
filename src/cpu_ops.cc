@@ -6,7 +6,7 @@
 #include "extending_jax/kepler.h"
 #include "extending_jax/pybind11_kernel_helpers.h"
 
-using namespace kepler_jax;
+using namespace model;
 
 namespace {
 

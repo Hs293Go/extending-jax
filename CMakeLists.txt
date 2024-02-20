@@ -22,6 +22,7 @@ if(CMAKE_CUDA_COMPILER)
   include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   pybind11_add_module(gpu_ops ${CMAKE_CURRENT_LIST_DIR}/src/kernels.cc.cu
                       ${CMAKE_CURRENT_LIST_DIR}/src/gpu_ops.cc)
+  target_compile_options(gpu_ops PRIVATE -O3 -ffast-math)
   target_compile_features(gpu_ops PRIVATE cxx_std_17)
   target_link_libraries(gpu_ops PRIVATE Eigen3::Eigen)
   install(TARGETS gpu_ops LIBRARY DESTINATION .)

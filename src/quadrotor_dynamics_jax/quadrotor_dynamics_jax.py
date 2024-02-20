@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 
-__all__ = ["kepler"]
+__all__ = ["quadrotor_dynamics"]
 
 import functools
 
+import jax
 import numpy as np
 from jax import core, dtypes, lax
 from jax import numpy as jnp
@@ -31,7 +32,7 @@ else:
 # public-facing function in this module
 
 
-def kepler(x, u):
+def quadrotor_dynamics(x, u):
     return _primary.bind(x, u)
 
 
@@ -45,7 +46,7 @@ INPUT_SIZE = 4
 
 # For JIT compilation we need a function to evaluate the shape and dtype of the
 # outputs of our op for some given inputs
-def _kepler_abstract(x, u):
+def _quadrotor_dynamics_abstract(x, u):
     n_x, size_x = x.shape if len(x.shape) > 1 else (1,) + x.shape
     if size_x != STATE_SIZE:
         raise ValueError(f"Incorrect state dimension: {size_x} != {STATE_SIZE}")
@@ -66,7 +67,7 @@ def _kepler_abstract(x, u):
 # This provides a mechanism for exposing our custom C++ and/or CUDA interfaces
 # to the JAX XLA backend. We're wrapping two translation rules into one here:
 # one for the CPU and one for the GPU
-def _kepler_lowering(ctx, x, u, platform="cpu", *args, **kw):
+def _quadrotor_dynamics_lowering(ctx, x, u, platform="cpu", *args, **kw):
 
     # Checking that input types and shape agree
     if x.type.element_type != u.type.element_type:
@@ -90,9 +91,9 @@ def _kepler_lowering(ctx, x, u, platform="cpu", *args, **kw):
 
     # We dispatch a different call depending on the dtype
     if np_dtype == np.float32:
-        op_name = platform + "_kepler_f32"
+        op_name = platform + "_quadrotor_dynamics_f32"
     elif np_dtype == np.float64:
-        op_name = platform + "_kepler_f64"
+        op_name = platform + "_quadrotor_dynamics_f64"
     else:
         raise NotImplementedError(f"Unsupported dtype {np_dtype}")
 
@@ -115,11 +116,11 @@ def _kepler_lowering(ctx, x, u, platform="cpu", *args, **kw):
     elif platform == "gpu":
         if gpu_ops is None:
             raise ValueError(
-                "The 'kepler_jax' module was not compiled with CUDA support"
+                "The 'quadrotor_dynamics_jax' module was not compiled with CUDA support"
             )
         # On the GPU, we do things a little differently and encapsulate the
         # dimension using the 'opaque' parameter
-        opaque = gpu_ops.build_kepler_descriptor(size)
+        opaque = gpu_ops.build_descriptor(size)
 
         return custom_call(
             operands=[x, u],
@@ -135,37 +136,62 @@ def _kepler_lowering(ctx, x, u, platform="cpu", *args, **kw):
 # **********************************
 
 
-# Here we define the differentiation rules using a JVP derived using implicit
-# differentiation of Kepler's equation:
-#
-#  M = E - e * sin(E)
-#  -> dM = dE * (1 - e * cos(E)) - de * sin(E)
-#  -> dE/dM = 1 / (1 - e * cos(E))  and  de/dM = sin(E) / (1 - e * cos(E))
-#
+def quaternion_product(lhs, rhs):
+    return jnp.array(
+        [
+            lhs[3] * rhs[0] + lhs[0] * rhs[3] + lhs[1] * rhs[2] - lhs[2] * rhs[1],
+            lhs[3] * rhs[1] + lhs[1] * rhs[3] + lhs[2] * rhs[0] - lhs[0] * rhs[2],
+            lhs[3] * rhs[2] + lhs[2] * rhs[3] + lhs[0] * rhs[1] - lhs[1] * rhs[0],
+            lhs[3] * rhs[3] - lhs[0] * rhs[0] - lhs[1] * rhs[1] - lhs[2] * rhs[2],
+        ]
+    )
+
+
+def quaternion_rotate_point(quaternion, point):
+    vec = quaternion[0:3]
+    uv = jnp.cross(vec, point)
+    uv += uv
+    return point + quaternion[3] * uv + jnp.cross(vec, uv)
+
+
 # In this case we don't need to define a transpose rule in order to support
 # reverse and higher order differentiation. This might not be true in other
 # applications, so check out the "How JAX primitives work" tutorial in the JAX
 # documentation for more info as necessary.
-def _kepler_jvp(args, tangents):
-    raise NotImplementedError()
+def _quadrotor_dynamics_jvp(args, tangents):
     # mean_anom, ecc = args
     # d_mean_anom, d_ecc = tangents
+    x, u = args
+    tx, tu = tangents
 
     # # We use "bind" here because we don't want to mod the mean anomaly again
-    # sin_ecc_anom, cos_ecc_anom = _primary.bind(mean_anom, ecc)
+    primals = _primary.bind(*args)
 
-    # def zero_tangent(tan, val):
-    #     return lax.zeros_like_array(val) if type(tan) is ad.Zero else tan
+    q = x[3:7]
+    f = u[0]
+    omega_q = jnp.append(u[1:4] / 2.0, 0.0)
 
-    # # Propagate the derivatives
-    # d_ecc_anom = (
-    #     zero_tangent(d_mean_anom, mean_anom) + zero_tangent(d_ecc, ecc) * sin_ecc_anom
-    # ) / (1 - ecc * cos_ecc_anom)
+    qv_x_i3 = jnp.array([q[1], -q[0], 0.0])
+    i3_x_tx_35 = jnp.array([-tx[4], tx[3], 0.0])
 
-    # return (sin_ecc_anom, cos_ecc_anom), (
-    #     cos_ecc_anom * d_ecc_anom,
-    #     -sin_ecc_anom * d_ecc_anom,
-    # )
+    ux_13_q = jnp.append(tu[1:4] / 2.0, 0.0)
+    df_tx = jnp.concatenate(
+        [
+            tx[7:10],
+            quaternion_product(tx[3:7], omega_q) + quaternion_product(q, ux_13_q),
+            2.0
+            * f
+            * (
+                q[2] * tx[3:6]
+                - jnp.cross(qv_x_i3, tx[3:6])
+                - q[3] * i3_x_tx_35
+                + (qv_x_i3 + jnp.array([0.0, 0.0, q[3]])) * tx[6]
+            )
+            + quaternion_rotate_point(q, jnp.array([0.0, 0.0, 1.0])) * tu[0],
+        ]
+    )
+
+    return primals, df_tx
 
 
 # ************************************
@@ -176,27 +202,27 @@ def _kepler_jvp(args, tangents):
 # Our op already supports arbitrary dimensions so the batching rule is quite
 # simple. The jax.lax.linalg module includes some example of more complicated
 # batching rules if you need such a thing.
-def _kepler_batch(args, axes):
+def _quadrotor_dynamics_batch(args, axes):
     assert axes[0] == axes[1]
-    return kepler(*args), axes[0]
+    return quadrotor_dynamics(*args), axes[0]
 
 
 # *********************************************
 # *  BOILERPLATE TO REGISTER THE OP WITH JAX  *
 # *********************************************
-_primary = core.Primitive("kepler")
+_primary = core.Primitive("quadrotor_dynamics")
 _primary.multiple_results = False
 _primary.def_impl(functools.partial(xla.apply_primitive, _primary))
-_primary.def_abstract_eval(_kepler_abstract)
+_primary.def_abstract_eval(_quadrotor_dynamics_abstract)
 
 # Connect the XLA translation rules for JIT compilation
 for platform in ["cpu", "gpu"]:
     mlir.register_lowering(
         _primary,
-        functools.partial(_kepler_lowering, platform=platform),
+        functools.partial(_quadrotor_dynamics_lowering, platform=platform),
         platform=platform,
     )
 
 # Connect the JVP and batching rules
-ad.primitive_jvps[_primary] = _kepler_jvp
-batching.primitive_batchers[_primary] = _kepler_batch
+ad.primitive_jvps[_primary] = _quadrotor_dynamics_jvp
+batching.primitive_batchers[_primary] = _quadrotor_dynamics_batch
