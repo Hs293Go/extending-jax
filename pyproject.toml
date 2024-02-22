@@ -10,7 +10,7 @@ dependencies = ["jax>=0.4.16", "jaxlib>=0.4.16"]
 dynamic = ["version"]
 
 [project.optional-dependencies]
-test = ["pytest"]
+test = ["pytest", "sympy"]
 
 [build-system]
 requires = ["pybind11>=2.6", "scikit-build-core>=0.5"]

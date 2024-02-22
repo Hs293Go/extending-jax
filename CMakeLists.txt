@@ -6,6 +6,7 @@ message(STATUS "Using CMake version: " ${CMAKE_VERSION})
 set(PYBIND11_NEWPYTHON ON)
 find_package(pybind11 CONFIG REQUIRED)
 find_package(Eigen3 CONFIG REQUIRED)
+find_package(Threads REQUIRED)
 
 include_directories(${CMAKE_CURRENT_LIST_DIR}/include)
 
@@ -13,7 +14,7 @@ include_directories(${CMAKE_CURRENT_LIST_DIR}/include)
 pybind11_add_module(cpu_ops ${CMAKE_CURRENT_LIST_DIR}/src/cpu_ops.cc)
 target_compile_options(cpu_ops PRIVATE -O3 -ffast-math)
 target_compile_features(cpu_ops PRIVATE cxx_std_17)
-target_link_libraries(cpu_ops PRIVATE Eigen3::Eigen)
+target_link_libraries(cpu_ops PRIVATE Eigen3::Eigen Threads::Threads)
 
 install(TARGETS cpu_ops LIBRARY DESTINATION .)
 
