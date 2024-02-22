@@ -12,7 +12,6 @@ from jax import numpy as jnp
 from jax.core import ShapedArray
 from jax.interpreters import ad, batching, mlir, xla
 from jax.lib import xla_client
-from jax_geometry.rotation import quaternion_product, quaternion_rotate_point
 from jaxlib import hlo_helpers
 
 # Register the CPU XLA custom calls
