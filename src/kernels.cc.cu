@@ -50,7 +50,7 @@ struct QuadrotorDynamics {
     Eigen::Map<const QuaternionType> q(x.template segment<4>(3).data());
     Eigen::Ref<const VectorType> v(x.template tail<3>());
 
-    const T f = u[0];
+    const Scalar f = u[0];
     const QuaternionType omega_q{Scalar{0}, u[1] / Scalar{2}, u[2] / Scalar{2},
                                  u[3] / Scalar{2}};
 
@@ -173,7 +173,7 @@ inline void EvaluateDynamics(cudaStream_t stream, void **buffers,
 }
 
 template <typename T>
-inline void EvaluatePushForward(cudaStream_t stream, void **buffers,
+inline void EvaluatePushforward(cudaStream_t stream, void **buffers,
                                 const char *opaque, std::size_t opaque_len) {
   const auto *d = UnpackDescriptor<Descriptor>(opaque, opaque_len);
   const auto max_num_models = d->size;
@@ -196,12 +196,12 @@ inline void EvaluatePushForward(cudaStream_t stream, void **buffers,
 
 void gpu_quadrotor_pushforward_f32(cudaStream_t stream, void **buffers,
                                    const char *opaque, std::size_t opaque_len) {
-  EvaluatePushForward<float>(stream, buffers, opaque, opaque_len);
+  EvaluatePushforward<float>(stream, buffers, opaque, opaque_len);
 }
 
 void gpu_quadrotor_pushforward_f64(cudaStream_t stream, void **buffers,
                                    const char *opaque, std::size_t opaque_len) {
-  EvaluatePushForward<double>(stream, buffers, opaque, opaque_len);
+  EvaluatePushforward<double>(stream, buffers, opaque, opaque_len);
 }
 
 void gpu_quadrotor_dynamics_f32(cudaStream_t stream, void **buffers,
