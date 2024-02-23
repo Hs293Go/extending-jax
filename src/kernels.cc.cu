@@ -2,6 +2,8 @@
 // CUDA kernel and I make no promises about the quality of the code or the
 // choices made therein, but it should get the point accross.
 
+#include <stdexcept>
+
 #include "Eigen/Dense"
 #include "extending_jax/kernel_helpers.h"
 #include "extending_jax/kernels.h"
@@ -10,7 +12,7 @@
 namespace model {
 
 namespace {
-constexpr auto kBlockDim = 8L;
+constexpr auto kBlockDim = 16L;
 constexpr auto kMaxCUDAThreads = 1024L;
 
 inline void ThrowIfError(cudaError_t error) {
@@ -72,6 +74,10 @@ inline void EvaluateDynamics(cudaStream_t stream, void **buffers,
                              const char *opaque, std::size_t opaque_len) {
   const auto *d = UnpackDescriptor<Descriptor>(opaque, opaque_len);
   const auto max_num_models = d->size;
+  if (max_num_models > kBlockDim * kMaxCUDAThreads) {
+    throw std::runtime_error(
+        "Number of parallel computatations exceeded the numbers of threads");
+  }
 
   const auto *p_x = static_cast<const T *>(buffers[0]);
   const auto *p_u = static_cast<const T *>(buffers[1]);
@@ -90,6 +96,10 @@ inline void EvaluatePushforward(cudaStream_t stream, void **buffers,
                                 const char *opaque, std::size_t opaque_len) {
   const auto *d = UnpackDescriptor<Descriptor>(opaque, opaque_len);
   const auto max_num_models = d->size;
+  if (max_num_models > kBlockDim * kMaxCUDAThreads) {
+    throw std::runtime_error(
+        "Number of parallel computatations exceeded the numbers of threads");
+  }
 
   const auto *p_x = static_cast<const T *>(buffers[0]);
   const auto *p_u = static_cast<const T *>(buffers[1]);
