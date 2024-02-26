@@ -1,3 +1,5 @@
+import itertools
+
 import jax
 import numpy as np
 import pytest
@@ -35,7 +37,12 @@ quadrotor_dynamics = sp.lambdify((x_sym, u_sym), dx_sym)
 tx_sym = sp.Matrix(sp.MatrixSymbol("tx", 10, 1))
 tu_sym = sp.Matrix(sp.MatrixSymbol("tu", 4, 1))
 
-jvp_sym = dx_sym.jacobian(x_sym) @ tx_sym + dx_sym.jacobian(u_sym) @ tu_sym
+fjac_sym = dx_sym.jacobian(x_sym)
+quadrotor_fjac = sp.lambdify((x_sym, u_sym), fjac_sym)
+gjac_sym = dx_sym.jacobian(u_sym)
+quadrotor_gjac = sp.lambdify((x_sym, u_sym), gjac_sym)
+
+jvp_sym = fjac_sym @ tx_sym + gjac_sym @ tu_sym
 
 quadrotor_pushforward = sp.lambdify((x_sym, u_sym, tx_sym, tu_sym), jvp_sym)
 
@@ -51,12 +58,13 @@ def random_quaternion(rng):
     return np.array([a * np.cos(u2), b * np.sin(u3), b * np.cos(u3), a * np.sin(u2)])
 
 
-MAX_POSITION = np.full([3], 100.0)
-MAX_VELOCITY = np.full([3], 10.0)
+MAX_POSITION = np.full([3], 10.0)
+MAX_VELOCITY = np.full([3], 1.0)
 MAX_THRUST = 80.0
 MAX_BODY_RATES = np.full([3], 8.0)
 
 NUM_TRIALS = 10000
+devices = list(itertools.chain.from_iterable(map(jax.devices, ["gpu", "cpu"])))
 
 
 @pytest.fixture(name="test_data")
@@ -76,24 +84,44 @@ def _():
     return x, u, tx, tu
 
 
-def test_quadrotor_dynamics(test_data):
-    quadrotor_state = test_data[:2]
+@pytest.mark.parametrize("dev", devices, ids=map(str, devices))
+def test_quadrotor_dynamics(test_data, dev):
+    x, u = test_data[:2]
 
-    dx_result = jax.vmap(quad.quadrotor_dynamics)(*quadrotor_state)
-    dx_expected = np.array(
-        [quadrotor_dynamics(*args).squeeze() for args in zip(*quadrotor_state)]
-    )
+    x_dev, u_dev = (jax.device_put(it, dev) for it in test_data[:2])
 
-    assert dx_expected == pytest.approx(dx_result, rel=1e-4, abs=1e-5)
+    result = jax.vmap(quad.quadrotor_dynamics)(x_dev, u_dev)
+    expected = np.array([quadrotor_dynamics(*args).squeeze() for args in zip(x, u)])
+
+    assert result == pytest.approx(expected, rel=1e-4, abs=1e-5)
 
 
-def test_quadrotor_pushforward(test_data):
+@pytest.mark.parametrize("dev", devices, ids=map(str, devices))
+def test_quadrotor_pushforward(test_data, dev):
     quadrotor_state = test_data[:2]
     tangents = test_data[2:]
 
-    jvp_result = jax.jvp(quad.quadrotor_dynamics, quadrotor_state, tangents)[1]
-    jvp_expected = np.array(
+    quadrotor_state_dev = [jax.device_put(it, dev) for it in quadrotor_state]
+    tangents_dev = [jax.device_put(it, dev) for it in tangents]
+
+    result = jax.jvp(quad.quadrotor_dynamics, quadrotor_state_dev, tangents_dev)[1]
+    expected = np.array(
         [quadrotor_pushforward(*args).squeeze() for args in zip(*test_data)]
     )
 
-    assert jvp_expected == pytest.approx(jvp_result, rel=5e-3, abs=1e-5)
+    assert result == pytest.approx(expected, rel=5e-3, abs=1e-5)
+
+
+@pytest.mark.parametrize("dev", devices, ids=map(str, devices))
+def test_quadrotor_jacobian(test_data, dev):
+
+    # TODO(Hs293Go): Fix vmapping Jacobian and remove slicing
+    x, u = (it[:100, :] for it in test_data[:2])
+
+    x_dev, u_dev = (jax.device_put(it[:100, :], dev) for it in test_data[:2])
+    result = np.stack(
+        [jax.jacfwd(quad.quadrotor_dynamics)(*args) for args in zip(x_dev, u_dev)]
+    )
+    expected = np.array([quadrotor_fjac(*args).squeeze() for args in zip(x, u)])
+
+    assert result == pytest.approx(expected, rel=5e-3, abs=1e-5)

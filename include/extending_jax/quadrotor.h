@@ -1,7 +1,7 @@
 #ifndef EXTENDING_JAX_QUADROTOR_H_
 #define EXTENDING_JAX_QUADROTOR_H_
 
-#include <eigen3/Eigen/Core>
+#include <type_traits>
 
 #include "Eigen/Dense"
 

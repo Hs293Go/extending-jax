@@ -12,6 +12,7 @@ from jax import numpy as jnp
 from jax.core import ShapedArray
 from jax.interpreters import ad, batching, mlir, xla
 from jax.lib import xla_client
+from jax_geometry import rotation as R
 from jaxlib import hlo_helpers
 
 # Register the CPU XLA custom calls
@@ -141,6 +142,9 @@ def quadrotor_jvp(primals, tangents):
     return dx, jvp
 
 
+ad.primitive_jvps[_quadrotor_dynamics_p] = quadrotor_jvp
+
+
 @_quadrotor_jvp_p.def_abstract_eval
 def _(x, u, tx, tu):
     return ShapedArray(tx.shape, tx.dtype)
@@ -213,8 +217,22 @@ ad.primitive_jvps[_quadrotor_dynamics_p] = quadrotor_jvp
 
 
 def _quadrotor_jvp_batch(args, axes):
-    assert axes[0] == axes[1]
-    return quadrotor_jvp(args[0:2], args[2:4])[1], axes[0]
+    batch_len = [it.shape[0] for it, dim in zip(args, axes) if dim is not None]
+
+    args = tuple(
+        jnp.moveaxis(arg, dim, 0) if dim is not None else arg
+        for arg, dim in zip(args, axes)
+    )
+    args = tuple(
+        (
+            jnp.broadcast_to(arg, shape=(batch_len[0],) + arg.shape)
+            if dim is None
+            else arg
+        )
+        for arg, dim in zip(args, axes)
+    )
+
+    return _quadrotor_jvp_p.bind(*args), 0
 
 
 batching.primitive_batchers[_quadrotor_jvp_p] = _quadrotor_jvp_batch
